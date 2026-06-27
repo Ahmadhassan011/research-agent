@@ -15,4 +15,5 @@ agent = create_deep_agent(
     tools=[internet_search],
     system_prompt=research_instructions,
     checkpointer=checkpointer,
+    skills=["./skills"],
 )
