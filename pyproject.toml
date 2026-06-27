@@ -1,15 +1,24 @@
 [project]
-name = "deepagents-001"
+name = "deepresearch-agent"
 version = "0.1.0"
-description = "Add your description here"
+description = "Research agent powered by deepagents and Gemini that searches the web and writes structured reports, with CLI and Telegram interfaces"
 readme = "README.md"
 requires-python = ">=3.13"
+authors = [{ name = "Ahmad Hassan", email = "ahmad.hassan@example.com" }]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = [
     "ddgs>=9.14.4",
     "deepagents>=0.6.12",
     "duckduckgo-search>=8.1.1",
     "langchain-community>=0.4.2",
-    "langchain-google-genai>=2.1.0",
+    "langchain-groq>=0.3.0",
     "langgraph-checkpoint-sqlite>=2.0.0",
     "python-dotenv>=1.2.2",
     "python-telegram-bot>=21.0.0",

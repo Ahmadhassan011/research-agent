@@ -1,5 +1,6 @@
 import os
 import re
+import time
 import hashlib
 import asyncio
 import random
@@ -24,6 +25,13 @@ logger = logging.getLogger(__name__)
 
 executor = ThreadPoolExecutor(max_workers=4)
 OUTPUT_DIR = Path("output")
+
+# ── In-flight task tracking for /cancel ──────────────────────────────────
+_running_tasks: dict[int, asyncio.Task] = {}
+
+# ── Rate limiting ─────────────────────────────────────────────────────────
+_LAST_MSG_TIME: dict[int, float] = {}
+_RATE_LIMIT_SECONDS = 2
 
 # ── Casual intent detection ──────────────────────────────────────────────
 
@@ -159,9 +167,44 @@ async def start(update: Update, _context):
     )
 
 
+async def help_command(update: Update, _context):
+    await update.message.reply_text(
+        "Available commands:\n\n"
+        "/start — Welcome message\n"
+        "/help — Show this help\n"
+        "/cancel — Cancel a running research task\n\n"
+        "Just send me any question or topic and I'll research it."
+    )
+
+
+async def cancel_command(update: Update, _context):
+    chat_id = update.effective_chat.id
+    task = _running_tasks.pop(chat_id, None)
+    if task and not task.done():
+        task.cancel()
+        await update.message.reply_text("✅ Research cancelled.")
+    else:
+        await update.message.reply_text("No active research to cancel.")
+
+
 async def handle_message(update: Update, context):
     user_input = update.message.text.strip()
     chat_id = update.effective_chat.id
+
+    # Rate limiting
+    now = time.time()
+    last = _LAST_MSG_TIME.get(chat_id, 0)
+    if now - last < _RATE_LIMIT_SECONDS:
+        return
+    _LAST_MSG_TIME[chat_id] = now
+
+    # Cancel existing research for this user
+    existing = _running_tasks.get(chat_id)
+    if existing and not existing.done():
+        await update.message.reply_text(
+            "⏳ A research is already running. Use /cancel to stop it."
+        )
+        return
 
     intent, category = classify_intent(user_input)
     if intent == "casual":
@@ -183,29 +226,36 @@ async def handle_message(update: Update, context):
             executor, stream_agent, user_input, status_queue, loop
         )
 
-    asyncio.create_task(run())
+    task = asyncio.create_task(run())
+    _running_tasks[chat_id] = task
 
-    while True:
-        kind, text = await status_queue.get()
+    try:
+        while True:
+            kind, text = await status_queue.get()
 
-        if kind == "search":
-            label = strip_markdown(text)[:80]
-            search_messages.append(label)
-            await status_msg.edit_text(f"🔍 Searching: {label}")
-            await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+            if kind == "search":
+                label = strip_markdown(text)[:80]
+                search_messages.append(label)
+                await status_msg.edit_text(f"🔍 Searching: {label}")
+                await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
-        elif kind == "writing" and not wrote_report:
-            wrote_report = True
-            await status_msg.edit_text("✍️ Writing report...")
-            await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+            elif kind == "writing" and not wrote_report:
+                wrote_report = True
+                await status_msg.edit_text("✍️ Writing report...")
+                await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
-        elif kind == "done":
-            final_text = text
-            break
+            elif kind == "done":
+                final_text = text
+                break
 
-        elif kind == "error":
-            await status_msg.edit_text(f"❌ Error: {text}")
-            return
+            elif kind == "error":
+                await status_msg.edit_text(f"❌ Error: {text}")
+                return
+    except asyncio.CancelledError:
+        await status_msg.edit_text("❌ Research cancelled.")
+        return
+    finally:
+        _running_tasks.pop(chat_id, None)
 
     await status_msg.delete()
 
@@ -251,6 +301,8 @@ def main():
         app = Application.builder().token(token).build()
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("cancel", cancel_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("Telegram bot is running ...")
