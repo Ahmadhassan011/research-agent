@@ -142,15 +142,20 @@ def stream_agent(
                     search_count += 1
 
                 if node == "model" and hasattr(last, "content") and last.content:
+                    content = last.content
+                    if isinstance(content, list):
+                        content = "\n".join(str(c) for c in content if c)
                     if search_count == 0:
-                        final_parts.append(last.content)
+                        final_parts.append(content)
                     else:
                         emit("writing", "✍️ Writing report...")
-                        final_parts.append(last.content)
+                        final_parts.append(content)
 
         emit(
             "done",
-            "\n\n".join(final_parts) if final_parts else "No response generated.",
+            "\n\n".join(str(p) for p in final_parts)
+            if final_parts
+            else "No response generated.",
         )
 
     except Exception as e:
