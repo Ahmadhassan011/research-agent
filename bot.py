@@ -155,7 +155,15 @@ def stream_agent(
 
     except Exception as e:
         logger.exception("Stream agent failed")
-        emit("error", str(e))
+        # Try to extract the full error response from Groq
+        error_msg = str(e)
+        if hasattr(e, "__cause__") and e.__cause__:
+            cause = e.__cause__
+            if hasattr(cause, "body") and cause.body:
+                error_msg += f" | Body: {cause.body[:500]}"
+            elif hasattr(cause, "response") and hasattr(cause.response, "text"):
+                error_msg += f" | Response: {cause.response.text[:500]}"
+        emit("error", error_msg)
 
 
 # ── Telegram handlers ────────────────────────────────────────────────────
