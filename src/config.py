@@ -12,7 +12,7 @@ if not api_key:
     logger.warning("GROQ_API_KEY not set")
 
 llm = ChatGroq(
-    model="llama-3.1-8b-instant",
+    model="llama-3.3-70b-versatile",
     api_key=api_key,
     temperature=0.3,
 )
