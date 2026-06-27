@@ -1,17 +1,12 @@
-import os
 import logging
 from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-api_key = os.environ.get("OPENROUTER_API_KEY")
-
-llm = ChatOpenAI(
-    model="openrouter/free",
-    api_key=api_key,
-    base_url="https://openrouter.ai/api/v1",
+llm = ChatGoogleGenerativeAI(
+    model="gemini-2.5-flash",
     temperature=0.3,
 )
