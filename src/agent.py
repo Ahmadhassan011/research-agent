@@ -1,3 +1,4 @@
+import os
 import sqlite3
 from pathlib import Path
 from langgraph.checkpoint.sqlite import SqliteSaver
@@ -7,7 +8,8 @@ from src.tools import internet_search
 
 research_instructions = Path("prompts/system_prompt.md").read_text()
 
-conn = sqlite3.connect("checkpoints.db", check_same_thread=False)
+checkpoint_path = os.environ.get("CHECKPOINT_DB_PATH", "checkpoints.db")
+conn = sqlite3.connect(checkpoint_path, check_same_thread=False)
 checkpointer = SqliteSaver(conn)
 
 agent = create_deep_agent(

@@ -1,19 +1,21 @@
 import os
-import re
 import time
 import hashlib
 import asyncio
 import random
+import signal
 import logging
 from datetime import datetime
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
+
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from telegram.request import HTTPXRequest
 
 from src.agent import agent
+from src.utils import extract_text, strip_markdown
 
 load_dotenv()
 
@@ -30,8 +32,8 @@ OUTPUT_DIR = Path("output")
 _running_tasks: dict[int, asyncio.Task] = {}
 
 # ── Rate limiting ─────────────────────────────────────────────────────────
-_LAST_MSG_TIME: dict[int, float] = {}
-_RATE_LIMIT_SECONDS = 2
+_last_msg_time: dict[int, float] = {}
+RATE_LIMIT_SECONDS = 2
 
 # ── Casual intent detection ──────────────────────────────────────────────
 
@@ -94,10 +96,6 @@ def pick_response(category: str) -> str:
     return random.choice(CASUAL_RESPONSES.get(category, CASUAL_RESPONSES["default"]))
 
 
-def strip_markdown(text: str) -> str:
-    return re.sub(r"[_*\[\]()~`>#+\-!|{}=]", "", text)
-
-
 def extract_search_queries(msg) -> list[str]:
     queries = []
     if hasattr(msg, "tool_calls") and msg.tool_calls:
@@ -125,19 +123,6 @@ def stream_agent(
     def emit(kind: str, text: str):
         loop.call_soon_threadsafe(status_queue.put_nowait, (kind, text))
 
-    def extract_text(content):
-        if isinstance(content, str):
-            return content
-        if isinstance(content, list):
-            parts = []
-            for c in content:
-                if isinstance(c, str):
-                    parts.append(c)
-                elif isinstance(c, dict) and "text" in c:
-                    parts.append(c["text"])
-            return "\n".join(parts)
-        return str(content)
-
     try:
         for event in agent.stream({"messages": user_input}, config):
             for node, output in event.items():
@@ -157,12 +142,9 @@ def stream_agent(
 
                 if node == "model" and hasattr(last, "content") and last.content:
                     content = extract_text(last.content)
-                    if search_count == 0:
-                        pass
-                    else:
-                        if not wrote_report:
-                            emit("writing", "✍️ Writing report...")
-                            wrote_report = True
+                    if search_count > 0 and not wrote_report:
+                        emit("writing", "✍️ Writing report...")
+                        wrote_report = True
                     final_content = content
 
         emit(
@@ -172,15 +154,7 @@ def stream_agent(
 
     except Exception as e:
         logger.exception("Stream agent failed")
-        # Try to extract the full error response from Groq
-        error_msg = str(e)
-        if hasattr(e, "__cause__") and e.__cause__:
-            cause = e.__cause__
-            if hasattr(cause, "body") and cause.body:
-                error_msg += f" | Body: {cause.body[:500]}"
-            elif hasattr(cause, "response") and hasattr(cause.response, "text"):
-                error_msg += f" | Response: {cause.response.text[:500]}"
-        emit("error", error_msg)
+        emit("error", str(e))
 
 
 # ── Telegram handlers ────────────────────────────────────────────────────
@@ -218,10 +192,10 @@ async def handle_message(update: Update, context):
 
     # Rate limiting
     now = time.time()
-    last = _LAST_MSG_TIME.get(chat_id, 0)
-    if now - last < _RATE_LIMIT_SECONDS:
+    last = _last_msg_time.get(chat_id, 0)
+    if now - last < RATE_LIMIT_SECONDS:
         return
-    _LAST_MSG_TIME[chat_id] = now
+    _last_msg_time[chat_id] = now
 
     # Cancel existing research for this user
     existing = _running_tasks.get(chat_id)
@@ -242,7 +216,6 @@ async def handle_message(update: Update, context):
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
     status_msg = await update.message.reply_text("⏳ Starting research...")
-    search_messages = []
     wrote_report = False
     final_text = None
 
@@ -260,7 +233,6 @@ async def handle_message(update: Update, context):
 
             if kind == "search":
                 label = strip_markdown(text)[:80]
-                search_messages.append(label)
                 await status_msg.edit_text(f"🔍 Searching: {label}")
                 await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
@@ -324,6 +296,21 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("Telegram bot is running ...")
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    def shutdown():
+        logger.info("Shutting down...")
+        executor.shutdown(wait=False)
+        for chat_id, task in list(_running_tasks.items()):
+            task.cancel()
+        app.stop()
+        loop.stop()
+
+    loop.add_signal_handler(signal.SIGINT, shutdown)
+    loop.add_signal_handler(signal.SIGTERM, shutdown)
+
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 

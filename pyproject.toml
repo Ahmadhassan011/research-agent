@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Research agent powered by deepagents and Gemini that searches the web and writes structured reports, with CLI and Telegram interfaces"
 readme = "README.md"
 requires-python = ">=3.13"
-authors = [{ name = "Ahmad Hassan", email = "ahmad.hassan@example.com" }]
+authors = [{ name = "Ahmad Hassan", email = "ahmad.hassan011@gmail.com" }]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
