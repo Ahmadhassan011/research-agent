@@ -119,10 +119,24 @@ def stream_agent(
     thread_id = hashlib.sha256(user_input.encode()).hexdigest()[:16]
     config = {"configurable": {"thread_id": thread_id}}
     search_count = 0
-    final_parts = []
+    wrote_report = False
+    final_content = None
 
     def emit(kind: str, text: str):
         loop.call_soon_threadsafe(status_queue.put_nowait, (kind, text))
+
+    def extract_text(content):
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts = []
+            for c in content:
+                if isinstance(c, str):
+                    parts.append(c)
+                elif isinstance(c, dict) and "text" in c:
+                    parts.append(c["text"])
+            return "\n".join(parts)
+        return str(content)
 
     try:
         for event in agent.stream({"messages": user_input}, config):
@@ -142,20 +156,18 @@ def stream_agent(
                     search_count += 1
 
                 if node == "model" and hasattr(last, "content") and last.content:
-                    content = last.content
-                    if isinstance(content, list):
-                        content = "\n".join(str(c) for c in content if c)
+                    content = extract_text(last.content)
                     if search_count == 0:
-                        final_parts.append(content)
+                        pass
                     else:
-                        emit("writing", "✍️ Writing report...")
-                        final_parts.append(content)
+                        if not wrote_report:
+                            emit("writing", "✍️ Writing report...")
+                            wrote_report = True
+                    final_content = content
 
         emit(
             "done",
-            "\n\n".join(str(p) for p in final_parts)
-            if final_parts
-            else "No response generated.",
+            final_content if final_content else "No response generated.",
         )
 
     except Exception as e:

@@ -50,15 +50,25 @@ def main():
         return
 
     content = ""
-    for msg in result["messages"]:
+    for msg in reversed(result["messages"]):
         if msg.type == "ai" and msg.content:
-            content += msg.content + "\n\n"
+            raw = msg.content
+            if isinstance(raw, list):
+                parts = []
+                for c in raw:
+                    if isinstance(c, str):
+                        parts.append(c)
+                    elif isinstance(c, dict) and "text" in c:
+                        parts.append(c["text"])
+                raw = "\n".join(parts)
+            content = raw.strip()
+            break
 
     print(content)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_path = OUTPUT_DIR / f"report_{timestamp}.md"
-    output_path.write_text(content.strip())
+    output_path.write_text(content)
     print(f"Report saved to {output_path}")
 
 
