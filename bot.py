@@ -293,13 +293,6 @@ async def handle_message(update: Update, context):
 
     file_path.write_text(final_text)
 
-    MAX_LEN = 4000
-    if len(final_text) > MAX_LEN:
-        for i in range(0, len(final_text), MAX_LEN):
-            await update.message.reply_text(final_text[i : i + MAX_LEN])
-    else:
-        await update.message.reply_text(final_text)
-
     with open(file_path, "rb") as f:
         await update.message.reply_document(
             document=f,
