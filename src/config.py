@@ -1,18 +1,12 @@
-import os
 import logging
 from dotenv import load_dotenv
-from langchain_groq import ChatGroq
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-api_key = os.environ.get("GROQ_API_KEY")
-if not api_key:
-    logger.warning("GROQ_API_KEY not set")
-
-llm = ChatGroq(
-    model="llama-3.3-70b-versatile",
-    api_key=api_key,
+llm = ChatGoogleGenerativeAI(
+    model="gemini-2.5-flash",
     temperature=0.3,
 )
